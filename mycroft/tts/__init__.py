@@ -487,6 +487,14 @@ class TTSFactory:
         tts_config = config.get('tts', {}).get(tts_module, {})
         tts_lang = tts_config.get('lang', lang)
         clazz = TTSFactory.CLASSES.get(tts_module)
+        if not clazz:
+            # try import it as a python module
+            try:
+                module = __import__(tts_module)
+                clazz = module.PluginTTS
+            except (ImportError, NameError):
+                LOG.error('{} not found'.format(tts_module))
+                raise ValueError('{} wasn\'t found'.format(tts_module))
         tts = clazz(tts_lang, tts_config)
         tts.validator.validate()
         return tts
