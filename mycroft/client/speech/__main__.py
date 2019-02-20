@@ -42,6 +42,11 @@ def handle_record_end():
     bus.emit(Message('recognizer_loop:record_end'))
 
 
+def handle_thump():
+    LOG.info("Heard thump...")
+    bus.emit(Message('recognizer_loop:thump'))
+
+
 def handle_no_internet():
     LOG.debug("Notifying enclosure of no internet connection")
     bus.emit(Message('enclosure.notify.no_internet'))
@@ -157,6 +162,7 @@ def main():
     loop.on('recognizer_loop:utterance', handle_utterance)
     loop.on('recognizer_loop:speech.recognition.unknown', handle_unknown)
     loop.on('speak', handle_speak)
+    loop.on('recognizer_loop:thump', handle_thump)
     loop.on('recognizer_loop:record_begin', handle_record_begin)
     loop.on('recognizer_loop:awoken', handle_awoken)
     loop.on('recognizer_loop:wakeword', handle_wakeword)

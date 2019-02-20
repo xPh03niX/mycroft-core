@@ -218,7 +218,7 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
     def calc_energy(sound_chunk, sample_width):
         return audioop.rms(sound_chunk, sample_width)
 
-    def _record_phrase(self, source, sec_per_buffer):
+    def _record_phrase(self, source, sec_per_buffer, emitter):
         """Record an entire spoken phrase.
 
         Essentially, this code waits for a period of silence and then returns
@@ -281,6 +281,12 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
             else:
                 noise = decrease_noise(noise)
                 self._adjust_threshold(energy, sec_per_buffer)
+
+            if energy > self.energy_threshold * 50:
+                # A "thump" happened on the enclosure
+                emitter.emit("recognizer_loop:thump")
+                LOG.info("Thump Energy:  cur=" + str(energy) + " thresh=" +
+                         str(self.energy_threshold))
 
             if num_chunks % 10 == 0:
                 with open(self.mic_level_file, 'w') as f:
@@ -361,7 +367,7 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
             }
         )
 
-    def _wait_until_wake_word(self, source, sec_per_buffer):
+    def _wait_until_wake_word(self, source, sec_per_buffer, emitter):
         """Listen continuously on source until a wake word is spoken
 
         Args:
@@ -419,6 +425,12 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
                     if energy > self.energy_threshold:
                         # bump the threshold to just above this value
                         self.energy_threshold = energy * 1.2
+
+            if energy > self.energy_threshold * 50:
+                # A "thump" happened on the enclosure
+                emitter.emit("recognizer_loop:thump")
+                LOG.info("Thump 2 Energy:  cur=" + str(energy) + " thresh=" +
+                         str(self.energy_threshold))
 
             # Periodically output energy level stats.  This can be used to
             # visualize the microphone input, e.g. a needle on a meter.
@@ -490,7 +502,7 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
         self.adjust_for_ambient_noise(source, 1.0)
 
         LOG.debug("Waiting for wake word...")
-        self._wait_until_wake_word(source, sec_per_buffer)
+        self._wait_until_wake_word(source, sec_per_buffer, emitter)
         if self._stop_signaled:
             return
 
@@ -505,7 +517,7 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
             if file:
                 play_wav(file)
 
-        frame_data = self._record_phrase(source, sec_per_buffer)
+        frame_data = self._record_phrase(source, sec_per_buffer, emitter)
         audio_data = self._create_audio_data(frame_data, source)
         emitter.emit("recognizer_loop:record_end")
         if self.save_utterances:
