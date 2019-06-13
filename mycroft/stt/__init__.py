@@ -317,4 +317,15 @@ class STTFactory:
         config = Configuration.get().get("stt", {})
         module = config.get("module", "mycroft")
         clazz = STTFactory.CLASSES.get(module)
+        if not clazz:
+            print('TRYING TO IMPORT AS A MODULE!')
+            print(module)
+            # try import it as a python module
+            try:
+                module = __import__(module)
+                clazz = module.PluginSTT
+            except (ImportError, NameError):
+                LOG.error('{} not found'.format(module))
+                raise ValueError('{} not found'.format(module))
+
         return clazz()
