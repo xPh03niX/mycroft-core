@@ -66,7 +66,7 @@ class LogFileReader:
         try:
             self.log_msg_ts = datetime.strptime(
                 log_msg_ts,
-                '%Y-%m-%d %H:%M:%S,%f'
+                '%Y-%m-%d %H:%M:%S.%f'
             )
         except ValueError:
             print(
