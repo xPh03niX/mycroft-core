@@ -18,7 +18,7 @@ import sys
 import re
 import traceback
 import inspect
-from inspect import signature
+from inspect import ismethod, signature
 import collections
 import time
 from datetime import datetime, timedelta
@@ -175,6 +175,17 @@ class MycroftSkill:
         bus (MycroftWebsocketClient): Optional bus connection
         use_settings (bool): Set to false to not use skill settings at all
     """
+    properties = (
+        'enclosure',
+        'bus',
+        'config',
+        'instance_methods',
+        'location',
+        'location_pretty',
+        'location_timezone',
+        'lang'
+    )
+    _instance_methods = None
 
     def __init__(self, name=None, bus=None, use_settings=True):
         self.name = name or self.__class__.__name__
@@ -269,6 +280,18 @@ class MycroftSkill:
     def lang(self):
         """Get the configured language."""
         return self.config_core.get('lang')
+
+    @property
+    def instance_methods(self):
+        if self._instance_methods is None:
+            self._instance_methods = []
+            attributes = [a for a in dir(self) if a not in self.properties]
+            for attribute_name in attributes:
+                attr = getattr(self, attribute_name)
+                if ismethod(attr):
+                    self._instance_methods.append(attr)
+
+        return self._instance_methods
 
     def bind(self, bus):
         """Register messagebus emitter with skill.
@@ -561,10 +584,7 @@ class MycroftSkill:
         This only allows one screen and if two is registered only one
         will be used.
         """
-        attributes = [a for a in dir(self)]
-        for attr_name in attributes:
-            method = getattr(self, attr_name)
-
+        for method in self.instance_methods:
             if hasattr(method, 'resting_handler'):
                 self.resting_name = method.resting_handler
                 self.log.info('Registering resting screen {} for {}.'.format(
@@ -580,23 +600,22 @@ class MycroftSkill:
                 # Do a send at load to make sure the skill is registered
                 # if reloaded
                 self._handle_collect_resting()
-                return
+                break
 
     def _register_decorated(self):
         """Register all intent handlers that are decorated with an intent.
 
         Looks for all functions that have been marked by a decorator
-        and read the intent data from them
+        and read the intent data from them.  The intent handlers aren't the
+        only decorators used.  Skip properties as calling getattr on them
+        executes the code which may have unintended side-effects
         """
-        attributes = [a for a in dir(self)]
-        for attr_name in attributes:
-            method = getattr(self, attr_name)
-
-            if hasattr(method, 'intents'):
+        for method in self.instance_methods:
+            if method is not None and hasattr(method, 'intents'):
                 for intent in getattr(method, 'intents'):
                     self.register_intent(intent, method)
 
-            if hasattr(method, 'intent_files'):
+            if method is not None and hasattr(method, 'intent_files'):
                 for intent_file in getattr(method, 'intent_files'):
                     self.register_intent_file(intent_file, method)
 
