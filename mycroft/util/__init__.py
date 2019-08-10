@@ -13,24 +13,21 @@
 # limitations under the License.
 #
 from __future__ import absolute_import
+import json
+import logging
+import os.path
 import re
-import socket
 import subprocess
-import pyaudio
-
 from os.path import join, expanduser, splitext
-
+import signal as sig
+from stat import S_ISREG, ST_MTIME, ST_MODE, ST_SIZE
 from threading import Thread
 from time import sleep
+from urllib.request import urlopen
+from urllib.error import URLError
 
-import json
-import os.path
+import pyaudio
 import psutil
-from stat import S_ISREG, ST_MTIME, ST_MODE, ST_SIZE
-import requests
-import logging
-
-import signal as sig
 
 import mycroft.audio
 import mycroft.configuration
@@ -257,53 +254,20 @@ def read_dict(filename, div='='):
 
 
 def connected():
-    """ Check connection by connecting to 8.8.8.8, if this is
-    blocked/fails, Microsoft NCSI is used as a backup
+    """Check internet connection by connecting to www.google.com
 
     Returns:
-        True if internet connection can be detected
+        True if connection attempt succeeded, indicating device is connected.
     """
-    return connected_dns() or connected_ncsi()
-
-
-def connected_ncsi():
-    """ Check internet connection by retrieving the Microsoft NCSI endpoint.
-
-    Returns:
-        True if internet connection can be detected
-    """
+    connect_success = False
     try:
-        r = requests.get('http://www.msftncsi.com/ncsi.txt')
-        if r.text == u'Microsoft NCSI':
-            return True
-    except Exception:
-        pass
-    return False
+        urlopen('https://www.google.com', timeout=3)
+    except URLError as ue:
+        LOG.debug('Attempt to connect to internet failed: ' + ue.reason)
+    else:
+        connect_success = True
 
-
-def connected_dns(host="8.8.8.8", port=53, timeout=3):
-    """ Check internet connection by connecting to DNS servers
-
-    Returns:
-        True if internet connection can be detected
-    """
-    # Thanks to 7h3rAm on
-    # Host: 8.8.8.8 (google-public-dns-a.google.com)
-    # OpenPort: 53/tcp
-    # Service: domain (DNS/TCP)
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(timeout)
-        s.connect((host, port))
-        return True
-    except IOError:
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(timeout)
-            s.connect(("8.8.4.4", port))
-            return True
-        except IOError:
-            return False
+    return connect_success
 
 
 def curate_cache(directory, min_free_percent=5.0, min_free_disk=50):
