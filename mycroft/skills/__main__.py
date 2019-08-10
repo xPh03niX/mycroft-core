@@ -66,7 +66,6 @@ class DevicePrimer(object):
             self._notify_backend_down()
         else:
             self._display_skill_loading_notification()
-            self.bus.emit(Message('mycroft.internet.connected'))
             self._ensure_device_is_paired()
             self._update_device_attributes_on_backend()
 
@@ -173,7 +172,7 @@ def main():
     # Set the active lang to match the configured one
     set_active_lang(config.get('lang', 'en-us'))
     bus = _start_message_bus_client()
-    _wait_for_internet_connection()
+    _wait_for_internet_connection(bus)
     device_primer = DevicePrimer(bus, config)
     # Restart the system clock first to prevent side-effects from time drift
     device_primer.update_system_clock()
@@ -244,15 +243,13 @@ def _initialize_skill_manager(bus):
     return skill_manager
 
 
-def _wait_for_internet_connection():
-    waited_for_connection = False
+def _wait_for_internet_connection(bus):
     if not connected():
-        waited_for_connection = True
         LOG.info('Waiting for internet connection...')
     while not connected():
-        time.sleep(10)
-    if waited_for_connection:
-        LOG.info('Internet connection established')
+        time.sleep(5)
+    LOG.info('Internet connection established')
+    bus.emit(Message('mycroft.internet.connected'))
 
 
 def shutdown(skill_manager, event_scheduler):
