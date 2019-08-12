@@ -263,7 +263,7 @@ def connected():
     try:
         urlopen('https://www.google.com', timeout=3)
     except URLError as ue:
-        LOG.debug('Attempt to connect to internet failed: ' + ue.reason)
+        LOG.debug('Attempt to connect to internet failed: ' + str(ue.reason))
     else:
         connect_success = True
 
