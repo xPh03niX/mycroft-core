@@ -41,7 +41,6 @@ class SkillManager(Thread):
         super(SkillManager, self).__init__()
         self.bus = bus
         self._stop_event = Event()
-        self._connected_event = Event()
         self.skill_loaders = {}
         self.enclosure = EnclosureAPI(bus)
         self.initial_load_complete = False
@@ -54,12 +53,6 @@ class SkillManager(Thread):
         """Define message bus events with handlers defined in this class."""
         # Conversation management
         self.bus.on('skill.converse.request', self.handle_converse_request)
-
-        # Update on initial connection
-        self.bus.on(
-            'mycroft.internet.connected',
-            lambda x: self._connected_event.set()
-        )
 
         # Update upon request
         self.bus.on('skillmanager.update', self.schedule_now)
@@ -122,7 +115,6 @@ class SkillManager(Thread):
     def run(self):
         """Load skills and update periodically from disk and internet."""
         self._remove_git_locks()
-        self._connected_event.wait()
         self._load_on_startup()
 
         # Scan the file folder that contains Skills.  If a Skill is updated,

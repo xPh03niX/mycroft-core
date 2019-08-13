@@ -179,8 +179,6 @@ def main():
     _register_intent_services(bus)
     event_scheduler = EventScheduler(bus)
     skill_manager = _initialize_skill_manager(bus)
-    if skill_manager is None:
-        skill_manager = _initialize_skill_manager(bus)
     device_primer.prepare_device()
     skill_manager.start()
     wait_for_exit_signal()
