@@ -32,8 +32,12 @@ def main():
         LOG.debug("Creating Mark II Enclosure")
         from mycroft.client.enclosure.mark2 import EnclosureMark2
         enclosure = EnclosureMark2()
+    elif platform == "mycroft_mark_2pi":
+        LOG.debug("Creating Mark II Pi Enclosure")
+        from mycroft.client.enclosure.mark2pi import EnclosureMark2Pi 
+        enclosure = EnclosureMark2Pi()
     else:
-        LOG.debug("Creating generic enclosure, platform='{}'".format(platform))
+        LOG.debug("Creating Mark2Pi enclosure, platform='{}'".format(platform))
 
         # TODO: Mechanism to load from elsewhere.  E.g. read a script path from
         # the mycroft.conf, then load/launch that script.
