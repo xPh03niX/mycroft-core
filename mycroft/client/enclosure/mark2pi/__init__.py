@@ -29,7 +29,7 @@ from mycroft.util import connected
 from mycroft.util.log import LOG
 
 
-class EnclosureGeneric(Enclosure):
+class EnclosureMark2Pi(Enclosure):
     """
     Serves as a communication interface between a simple text frontend and
     Mycroft Core.  This is used for Picroft or other headless systems,

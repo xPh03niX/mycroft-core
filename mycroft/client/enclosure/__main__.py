@@ -32,6 +32,10 @@ def main():
         LOG.debug("Creating Mark II Enclosure")
         from mycroft.client.enclosure.mark2 import EnclosureMark2
         enclosure = EnclosureMark2()
+    elif platform == "mycroft_mark_2pi":
+        LOG.debug("Creating Mark 2 Pi Enclosure")
+        from mycroft.client.enclosure.mark2pi import EnclosureMark2Pi
+        enclosure = EnclosureMark2Pi()
     else:
         LOG.debug("Creating generic enclosure, platform='{}'".format(platform))
 
