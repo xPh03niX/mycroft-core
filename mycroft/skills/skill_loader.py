@@ -14,9 +14,12 @@
 #
 """Periodically run by skill manager to load skills into memory."""
 import gc
+import importlib
 import os
+from os.path import dirname
 import sys
 from time import time
+from types import ModuleType
 
 from mycroft.configuration import Configuration
 from mycroft.messagebus import Message
@@ -24,6 +27,16 @@ from mycroft.util.log import LOG
 from .settings import SettingsMetaUploader
 
 SKILL_MAIN_MODULE = '__init__.py'
+
+
+def reload_related_modules(module_name):
+    module = sys.modules[module_name]
+    module_dir = dirname(module_name.__file__)
+    modules = [i for _, i in module.__dict__.items()
+               if isinstance(i, ModuleType)]
+    relatives = [m for m in modules if m.__file__.startswith(module_dir)]
+    for r in relatives:
+        importlib.reload(r)
 
 
 def load_skill_module(path, skill_id):
@@ -37,16 +50,17 @@ def load_skill_module(path, skill_id):
         skill_id: skill_id used as skill identifier in the module list
     """
     module_name = skill_id.replace('.', '_')
-    if sys.version_info >= (3, 5):
+    if sys.version_info >= (3, 9):
         import importlib.util
         spec = importlib.util.spec_from_file_location(module_name, path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
     else:
         from importlib.machinery import SourceFileLoader
-        mod = SourceFileLoader(module_name, path).load_module()
+        if module_name in sys.modules:
+            reload_related_modules(module_name)
+        mod = SourceFileLoader(module_name, path).load_module(name=module_name)
     if mod:
-        sys.modules[module_name] = mod
         return mod
     else:
         return None
