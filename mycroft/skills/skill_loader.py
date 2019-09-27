@@ -30,12 +30,23 @@ SKILL_MAIN_MODULE = '__init__.py'
 
 
 def reload_related_modules(module_name):
+    """Reload module located in the same folder as main module.
+
+    Arguments:
+        module_name (str): name of the module as set in sys.modules
+    """
     module = sys.modules[module_name]
-    module_dir = dirname(module_name.__file__)
+    module_dir = dirname(module.__file__)
+
+    # Find all imported modules with associated files
     modules = [i for _, i in module.__dict__.items()
-               if isinstance(i, ModuleType)]
+               if isinstance(i, ModuleType) and '__file__' in dir(i)]
+    # modules in the skill's folder are consider relatives
     relatives = [m for m in modules if m.__file__.startswith(module_dir)]
+
+    # Reload them
     for r in relatives:
+        LOG.debug('Reloading {}'.format(r.__name__))
         importlib.reload(r)
 
 
@@ -50,20 +61,11 @@ def load_skill_module(path, skill_id):
         skill_id: skill_id used as skill identifier in the module list
     """
     module_name = skill_id.replace('.', '_')
-    if sys.version_info >= (3, 9):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(module_name, path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-    else:
-        from importlib.machinery import SourceFileLoader
-        if module_name in sys.modules:
-            reload_related_modules(module_name)
-        mod = SourceFileLoader(module_name, path).load_module(name=module_name)
-    if mod:
-        return mod
-    else:
-        return None
+    from importlib.machinery import SourceFileLoader
+    if module_name in sys.modules:
+        reload_related_modules(module_name)
+    mod = SourceFileLoader(module_name, path).load_module(name=module_name)
+    return mod
 
 
 def _get_last_modified_time(path):
