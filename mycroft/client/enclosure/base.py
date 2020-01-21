@@ -398,7 +398,7 @@ class Enclosure:
     # If the connection is lost, it must be renegotiated and restarted.
     def on_gui_client_connected(self, message):
         # GUI has announced presence
-        LOG.debug("on_gui_client_connected")
+        LOG.info("on_gui_client_connected")
         gui_id = message.data.get("gui_id")
 
         # Spin up a new communication socket for this GUI
@@ -494,7 +494,7 @@ class GUIConnection:
     server_thread = None
 
     def __init__(self, id, config, callback_disconnect, enclosure):
-        LOG.debug("Creating GUIConnection")
+        LOG.info("Creating GUIConnection")
         self.id = id
         self.socket = None
         self.callback_disconnect = callback_disconnect
@@ -522,12 +522,12 @@ class GUIConnection:
                 LOG.debug('Error: {}'.format(repr(e)))
                 continue
             break
-        # Can't run two IOLoop's in the same process
-        if not GUIConnection.server_thread:
-            GUIConnection.server_thread = create_daemon(
-                ioloop.IOLoop.instance().start)
-        LOG.debug('IOLoop started @ '
-                  'ws://{}:{}{}'.format(host, self.port, route))
+
+        # Can run many servers at once now?
+        GUIConnection.server_thread = create_daemon(
+            ioloop.IOLoop.instance().start)
+        LOG.info('IOLoop started @ '
+                 'ws://{}:{}{}'.format(host, self.port, route))
 
     def on_connection_opened(self, socket_handler):
         LOG.debug("on_connection_opened")
