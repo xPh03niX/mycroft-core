@@ -5,6 +5,16 @@ pipeline {
         // building the Docker image.
         disableConcurrentBuilds()
     }
+    environment {
+        // Some branches have a "/" in their name (e.g. feature/new-and-cool)
+        // Some commands, such as those tha deal with directories, don't
+        // play nice with this naming convention.  Define an alias for the
+        // branch name that can be used in these scenarios.
+        BRANCH_ALIAS = sh(
+            script: 'echo $BRANCH_NAME | sed -e "s#/#_#g"',
+            returnStdout: true
+        ).trim()
+    }
     stages {
         // Run the build in the against the dev branch to check for compile errors
         stage('Run Integration Tests') {
@@ -18,7 +28,7 @@ pipeline {
             steps {
                 echo 'Building Test Docker Image'
                 sh 'cp test/Dockerfile.test Dockerfile'
-                sh 'docker build --target voigt_kampff -t mycroft-core:latest .'
+                sh 'docker build --target voigt_kampff -t mycroft-core:${BRANCH_ALIAS} .'
                 echo 'Running Tests'
                 timeout(time: 10, unit: 'MINUTES')
                 {
@@ -28,7 +38,7 @@ pipeline {
                         -e PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native \
                         -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
                         -v ~/.config/pulse/cookie:/root/.config/pulse/cookie \
-                        mycroft-core:latest'
+                        mycroft-core:${BRANCH_ALIAS}'
                 }
             }
         }
