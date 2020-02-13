@@ -79,5 +79,8 @@ pipeline {
                 '''
             )
         }
+        always {
+            githubNotify context: 'Voight Kampff Test...', description: 'Static Check Tests Passed', status: 'SUCCESS'
+        }
     }
 }
