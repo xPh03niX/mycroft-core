@@ -628,6 +628,8 @@ class GUIWebsocketHandler(WebSocketHandler):
             data (dict): Data to transmit
         """
         s = json.dumps(data)
+        import pprint
+        LOG.info(pprint.pformat(data))
         self.write_message(s)
 
     def on_close(self):
