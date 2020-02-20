@@ -133,12 +133,18 @@ def then_wait(msg_type, then_func, context, timeout=TIMEOUT):
     return False, debug
 
 
-def print_mycroft_responses(context):
+def mycroft_responses(context):
+    responses = ''
     messages = context.bus.get_messages('speak')
     if len(messages) > 0:
-        print('Mycroft responded with:')
+        responses = 'Mycroft responded with:\n'
         for m in messages:
-            print('Mycroft: "{}"'.format(m.data['utterance']))
+            responses += 'Mycroft: "{}"\n'.format(m.data['utterance'])
+    return responses
+
+
+def print_mycroft_responses(context):
+    print(mycroft_responses(context))
 
 
 @then('"{skill}" should reply with dialog from "{dialog}"')
@@ -149,10 +155,10 @@ def then_dialog(context, skill, dialog):
 
     passed, debug = then_wait('speak', check_dialog, context)
     if not passed:
-        print(debug)
-        print_mycroft_responses(context)
+        assert_msg = debug
+        assert_msg += mycroft_responses(context)
 
-    assert passed
+    assert passed, assert_msg
 
 
 @then('"{skill}" should reply with "{example}"')
@@ -160,7 +166,7 @@ def then_example(context, skill, example):
     skill_path = context.msm.find_skill(skill).path
     dialog = dialog_from_sentence(example, skill_path)
     print('Matching with the dialog file: {}'.format(dialog))
-    assert dialog is not None
+    assert dialog is not None, 'No matching dialog...'
     then_dialog(context, skill, dialog)
 
 
@@ -170,9 +176,7 @@ def then_anything(context, skill):
         return (True, '') if message else (False, '')
 
     passed = then_wait('speak', check_any_messages, context)
-    if not passed:
-        print('No speech recieved at all.')
-    assert passed
+    assert passed, 'No speech received at all'
 
 
 @then('"{skill}" should reply with exactly "{text}"')
@@ -184,9 +188,9 @@ def then_exactly(context, skill, text):
 
     passed, debug = then_wait('speak', check_exact_match, context)
     if not passed:
-        print(debug)
-        print_mycroft_responses(context)
-    assert passed
+        assert_msg = debug
+        assert_msg += mycroft_responses(context)
+    assert passed, assert_msg
 
 
 @then('mycroft reply should contain "{text}"')
@@ -199,9 +203,9 @@ def then_contains(context, text):
     passed, debug = then_wait('speak', check_contains, context)
 
     if not passed:
-        print('No speech contained the expected content')
-        print_mycroft_responses(context)
-    assert passed
+        assert_msg = 'No speech contained the expected content'
+        assert_msg += mycroft_responses(context)
+    assert passed, assert_msg
 
 
 @then('the user replies with "{text}"')
