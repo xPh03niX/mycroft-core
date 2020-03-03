@@ -53,6 +53,7 @@ pipeline {
                         -R /root/allure/"'
 
                     echo 'Transfering...'
+                    sh 'rm -rf allure-result/*'
                     sh 'mv $HOME/voight-kampff/allure-result allure-result'
                     script {
                         allure([
