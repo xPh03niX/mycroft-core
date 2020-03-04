@@ -2,6 +2,8 @@ extra_skills:
 - cocktails
 platform: mycroft_mark_1
 tested_skills:
+- mycroft-alarm
+- mycroft-timer
 - mycroft-date-time
 - mycroft-weather
 - mycroft-hello-world
@@ -14,3 +16,4 @@ tested_skills:
 - mycroft-stock
 - mycroft-mark-1
 - fallback-unknown
+- fallback-query
