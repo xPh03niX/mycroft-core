@@ -76,6 +76,10 @@ def before_all(context):
     context.matched_message = None
 
 
+def before_feature(context, feature):
+    print('Starting tests for {}'.format(feature.name))
+
+
 def after_all(context):
     context.bus.close()
 
