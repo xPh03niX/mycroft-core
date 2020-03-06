@@ -17,3 +17,4 @@ tested_skills:
 - mycroft-mark-1
 - fallback-unknown
 - fallback-query
+- mycroft-volume
