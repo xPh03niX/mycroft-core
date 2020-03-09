@@ -3,6 +3,10 @@ import time
 from mycroft.messagebus import Message
 
 
+SLEEP_LENGTH = 0.25
+TIMEOUT = 10
+
+
 def emit_utterance(bus, utt):
     """Emit an utterance on the bus.
 
@@ -18,7 +22,7 @@ def emit_utterance(bus, utt):
                      context={'client_name': 'mycroft_listener'}))
 
 
-def wait_for_dialog(bus, dialogs, timeout=10):
+def wait_for_dialog(bus, dialogs, timeout=TIMEOUT):
     """Wait for one of the dialogs given as argument.
 
     Arguments:
@@ -26,11 +30,11 @@ def wait_for_dialog(bus, dialogs, timeout=10):
         dialogs (list): list of acceptable dialogs
         timeout (int): how long to wait for the messagem, defaults to 10 sec.
     """
-    for t in range(timeout):
+    for t in range(int(timeout * (1 / SLEEP_LENGTH))):
         for message in bus.get_messages('speak'):
             dialog = message.data.get('meta', {}).get('dialog')
             if dialog in dialogs:
                 bus.clear_messages()
                 return
-        time.sleep(1)
+        time.sleep(SLEEP_LENGTH)
     bus.clear_messages()
