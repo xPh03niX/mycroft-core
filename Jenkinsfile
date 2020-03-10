@@ -4,6 +4,7 @@ pipeline {
         // Running builds concurrently could cause a race condition with
         // building the Docker image.
         disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '5'))
     }
     environment {
         // Some branches have a "/" in their name (e.g. feature/new-and-cool)
