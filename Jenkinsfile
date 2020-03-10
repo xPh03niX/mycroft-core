@@ -35,6 +35,10 @@ pipeline {
                 {
                     sh 'docker run \
                         -v "$HOME/voight-kampff/identity:/root/.mycroft/identity" \
+                        --device /dev/snd \
+                        -e PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native \
+                        -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
+                        -v ~/.config/pulse/cookie:/root/.config/pulse/cookie \
                         -v "$HOME/voight-kampff/:/root/allure" \
                         mycroft-core:${BRANCH_ALIAS} \
                         -f allure_behave.formatter:AllureFormatter \
