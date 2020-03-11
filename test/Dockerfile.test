@@ -5,7 +5,7 @@
 #   like Jenkins jobs don't spend a lot of time re-building things that did not
 #   change from one build to the next.
 #
-FROM ubuntu:18.04 as core_builder
+FROM ubuntu:18.04 as builder
 ENV TERM linux
 ENV DEBIAN_FRONTEND noninteractive
 # Un-comment any package sources that include a multiverse
@@ -66,24 +66,30 @@ COPY . mycroft-core
 EXPOSE 8181
 
 
-# Generic Integration Test Suite Setup
+# Integration Test Suite
 #
 #   Build against this target to set the container up as an executable that
 #   will run the "voight_kampff" integration test suite.
 #
-FROM core_builder as voight_kampff_builder
-ARG platform
+FROM builder as voight_kampff
 # Add the mycroft core virtual environment to the system path.
 ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
 # Install required packages for test environments
 RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
 RUN mycroft-core/.venv/bin/python -m pip install --no-deps /opt/mycroft/mycroft-core
 RUN mkdir ~/.mycroft/allure-result
-# Generate hash of required packages
+
+# Install Mark I default skills
+RUN msm -p mycroft_mark_1 default
+
+# The behave feature files for a skill are defined within the skill's
+# repository.  Copy those files into the local feature file directory
+# for test discovery.
 WORKDIR /opt/mycroft/mycroft-core
+# Generate hash of required packages
 RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
-# Install default skills for the specified platform and setup entrypoint to run tests
-RUN msm -p $platform default
-RUN python -m test.integrationtests.voight_kampff.test_setup --config test/integrationtests/voight_kampff/default.yml --platform $platform
+RUN python -m test.integrationtests.voight_kampff.test_setup -c test/integrationtests/voight_kampff/default.yml
+
+# Setup and run the integration tests
 WORKDIR /opt/mycroft/mycroft-core/test/integrationtests/voight_kampff
 ENTRYPOINT "./run_test_suite.sh"
