@@ -56,7 +56,7 @@ pipeline {
                     sh 'docker run \
                         -v "$HOME/voight-kampff/:/root/allure" \
                         --entrypoint=/bin/bash \
-                        mycroft-core:${BRANCH_ALIAS} \
+                        voight-kampff-mark-1:${BRANCH_ALIAS} \
                         -x -c "chown $(id -u $USER):$(id -g $USER) \
                         -R /root/allure/"'
 
