@@ -56,7 +56,7 @@ pipeline {
                         -x -c "chown $(id -u $USER):$(id -g $USER) \
                         -R /root/allure/"'
 
-                    echo 'Transfering...'
+                    echo 'Transferring...'
                     sh 'rm -rf allure-result/*'
                     sh 'mv $HOME/voight-kampff/allure-result allure-result'
                     script {
