@@ -11,7 +11,7 @@ pipeline {
         stage('Run Integration Tests') {
             when {
                 anyOf {
-                    branch 'feature/voight_kampff'
+                    branch 'feature/voight_kampff-cv'
                     branch 'dev'
                     branch 'master'
                     changeRequest target: 'dev'
