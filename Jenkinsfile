@@ -28,10 +28,13 @@ pipeline {
                 ).trim()
             }
             steps {
-                echo 'Building Test Docker Image'
+                echo 'Building Mark I Voight-Kampff Docker Image'
                 sh 'cp test/Dockerfile.test Dockerfile'
-                sh 'docker build --target voight_kampff -t mycroft-core:${BRANCH_ALIAS} .'
-                echo 'Running Tests'
+                sh 'docker build \
+                    --target voight_kampff_builder \
+                    --build-arg platform=mycroft_mark_1 \
+                    -t voight-kampff-mark-1:${BRANCH_ALIAS} .'
+                echo 'Running Mark I Voight-Kampff Test Suite'
                 timeout(time: 60, unit: 'MINUTES')
                 {
                     sh 'docker run \
@@ -41,7 +44,7 @@ pipeline {
                         -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
                         -v ~/.config/pulse/cookie:/root/.config/pulse/cookie \
                         -v "$HOME/voight-kampff/:/root/allure" \
-                        mycroft-core:${BRANCH_ALIAS} \
+                       voight-kampff-mark-1:${BRANCH_ALIAS} \
                         -f allure_behave.formatter:AllureFormatter \
                         -o /root/allure/allure-result --tags ~@xfail'
                 }
