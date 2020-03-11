@@ -6,6 +6,7 @@
 #   change from one build to the next.
 #
 FROM ubuntu:18.04 as core_builder
+ARG platform
 ENV TERM linux
 ENV DEBIAN_FRONTEND noninteractive
 # Un-comment any package sources that include a multiverse
@@ -62,7 +63,13 @@ RUN python3 -m venv "/opt/mycroft/mycroft-core/.venv"
 RUN mycroft-core/.venv/bin/python -m pip install pip==20.0.2
 COPY requirements.txt mycroft-core
 RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/requirements.txt
+RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
+# Add the mycroft core virtual environment to the system path.
+ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
+# Install Mark I default skills
+RUN msm -p $platform default
 COPY . mycroft-core
+RUN mycroft-core/.venv/bin/python -m pip install --no-deps /opt/mycroft/mycroft-core
 EXPOSE 8181
 
 
@@ -72,16 +79,8 @@ EXPOSE 8181
 #   will run the "voight_kampff" integration test suite.
 #
 FROM core_builder as voight_kampff_builder
-ARG platform
-# Add the mycroft core virtual environment to the system path.
-ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
 # Install required packages for test environments
-RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
-RUN mycroft-core/.venv/bin/python -m pip install --no-deps /opt/mycroft/mycroft-core
 RUN mkdir ~/.mycroft/allure-result
-
-# Install Mark I default skills
-RUN msm -p $platform default
 
 # The behave feature files for a skill are defined within the skill's
 # repository.  Copy those files into the local feature file directory
