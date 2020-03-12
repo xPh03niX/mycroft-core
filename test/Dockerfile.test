@@ -61,8 +61,9 @@ WORKDIR /opt/mycroft
 RUN mkdir mycroft-core skills ~/.mycroft
 RUN python3 -m venv "/opt/mycroft/mycroft-core/.venv"
 RUN mycroft-core/.venv/bin/python -m pip install pip==20.0.2
-COPY requirements.txt mycroft-core
+COPY requirements.txt mycroft-core/
 RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/requirements.txt
+COPY test-requirements.txt mycroft-core/
 RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
 # Add the mycroft core virtual environment to the system path.
 ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
