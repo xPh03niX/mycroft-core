@@ -65,12 +65,12 @@ RUN python3 -m venv "/root/.venv/mycroft-core"
 WORKDIR /root/.venv/mycroft-core
 RUN ls -la /root/.venv/mycroft-core
 RUN . /root/.venv/mycroft-core/bin/activate
-RUN ~/.venv/bin/python -m pip install pip==20.0.2
-COPY requirements.txt mycroft_core/
-RUN ~/.venv/bin/python -m pip install -r mycroft-core/requirements.txt
-COPY test-requirements.txt mycroft_core/
-RUN ~/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
-COPY dev_setup.sh mycroft-core/
+RUN python -m pip install pip==20.0.2
+COPY requirements.txt .
+RUN python -m pip install -r mycroft-core/requirements.txt
+COPY test-requirements.txt .
+RUN python -m pip install -r mycroft-core/test-requirements.txt
+COPY dev_setup.sh .
 RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
 
 # Add the mycroft core virtual environment to the system path.
@@ -78,8 +78,8 @@ ENV PATH ~/.venv/bin:$PATH
 
 # Install Mark I default skills
 RUN msm -p $platform default
-COPY . mycroft-core
-RUN ~/.venv/bin/python -m pip install --no-deps /opt/mycroft/mycroft-core
+COPY . /opt/mycroft/mycroft-core
+RUN python -m pip install --no-deps /opt/mycroft/mycroft-core
 EXPOSE 8181
 
 
