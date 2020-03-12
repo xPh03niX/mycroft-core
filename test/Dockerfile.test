@@ -57,13 +57,13 @@ ENV CI true
 #   This may not be the most efficient way to do this in terms of number of
 #   steps, but it is built to take advantage of Docker's caching mechanism
 #   to only rebuild things that have changed since the last build.
-RUN mkdir -p /opt/mycroft/mycroft-core /opt/mycroft/skills ~/.mycroft /var/log/mycroft ~/.venv
-RUN python3 -m venv "~/.venv/mycroft-core"
+RUN mkdir -p /opt/mycroft/mycroft-core /opt/mycroft/skills /root/.mycroft /var/log/mycroft /root/.venv
+RUN python3 -m venv "/root/.venv/mycroft-core"
 
 # Install required Python packages.  Generate hash, which mycroft core uses to
 # determine if any changes have been made since it last started
-WORKDIR ~/.venv
-RUN ls -la ~/.venv/
+WORKDIR /root/.venv
+RUN ls -la /root/.venv/
 RUN ~/.venv/bin/python -m pip install pip==20.0.2
 COPY requirements.txt mycroft_core/
 RUN ~/.venv/bin/python -m pip install -r mycroft-core/requirements.txt
