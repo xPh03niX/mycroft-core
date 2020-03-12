@@ -72,7 +72,7 @@ COPY dev_setup.sh .
 RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
 
 # Add the mycroft core virtual environment to the system path.
-ENV PATH /root/.venv/bin:$PATH
+ENV PATH /root/.venv/mycroft-core/bin:$PATH
 
 # Install Mark I default skills
 RUN msm -p $platform default
