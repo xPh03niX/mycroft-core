@@ -63,9 +63,8 @@ RUN python3 -m venv "/root/.venv/mycroft-core"
 # Install required Python packages.  Generate hash, which mycroft core uses to
 # determine if any changes have been made since it last started
 WORKDIR /root/.venv/mycroft-core
-RUN ls -la /root/.venv/mycroft-core
-RUN . /root/.venv/mycroft-core/bin/activate
-RUN python -m pip install pip==20.0.2
+ENV VENV_ROOT /root/.venv/mycroft-core
+RUN $VENV_ROOT/bin/python -m pip install pip==20.0.2
 COPY requirements.txt .
 RUN python -m pip install -r mycroft-core/requirements.txt
 COPY test-requirements.txt .
