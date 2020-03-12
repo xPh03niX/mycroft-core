@@ -93,8 +93,8 @@ RUN mkdir /root/.mycroft/allure-result
 # The behave feature files for a skill are defined within the skill's
 # repository.  Copy those files into the local feature file directory
 # for test discovery.
-WORKDIR /opt/mycroft/mycroft-core/.venv
-RUN bin/python -m test.integrationtests.voight_kampff.test_setup --config test/integrationtests/voight_kampff/default.yml  --platform $platform
+WORKDIR /opt/mycroft/mycroft-core/
+RUN .venv/bin/python -m test.integrationtests.voight_kampff.test_setup --config test/integrationtests/voight_kampff/default.yml  --platform $platform
 
 # Setup and run the integration tests
 ENV PYTHONPATH /opt/mycroft/mycroft-core/
