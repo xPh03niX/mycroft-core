@@ -64,7 +64,7 @@ RUN python3 -m venv "/root/.venv/mycroft-core"
 # determine if any changes have been made since it last started
 WORKDIR /root/.venv/mycroft-core
 ENV VENV_ROOT /root/.venv/mycroft-core
-RUN $VENV_ROOT/bin/python -m pip install pip==20.0.2
+RUN bin/python -m pip install pip==20.0.2
 COPY requirements.txt .
 RUN python -m pip install -r mycroft-core/requirements.txt
 COPY test-requirements.txt .
