@@ -5,6 +5,7 @@ tested_skills:
 - mycroft-alarm
 - mycroft-timer
 - mycroft-date-time
+- mycroft-npr-news
 - mycroft-weather
 - mycroft-hello-world
 - mycroft-pairing
