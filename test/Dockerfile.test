@@ -65,9 +65,9 @@ RUN python3 -m venv "/root/.venv/mycroft-core"
 WORKDIR /root/.venv/mycroft-core
 RUN bin/python -m pip install pip==20.0.2
 COPY requirements.txt .
-RUN bin/python -m pip install -r mycroft-core/requirements.txt
+RUN bin/python -m pip install -r requirements.txt
 COPY test-requirements.txt .
-RUN bin/python -m pip install -r mycroft-core/test-requirements.txt
+RUN bin/python -m pip install -r test-requirements.txt
 COPY dev_setup.sh .
 RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
 
