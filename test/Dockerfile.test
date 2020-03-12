@@ -62,13 +62,22 @@ RUN mkdir /var/log/mycroft
 WORKDIR /opt/mycroft
 RUN mkdir mycroft-core skills ~/.mycroft
 RUN python3 -m venv "/opt/mycroft/mycroft-core/.venv"
+
+# Install required Python packages
 RUN mycroft-core/.venv/bin/python -m pip install pip==20.0.2
 COPY requirements.txt mycroft-core/
 RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/requirements.txt
 COPY test-requirements.txt mycroft-core/
 RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
+
+# Generate hash of required packages
+COPY dev_setup.sh mycroft-core/
+WORKDIR /opt/mycroft/mycroft-core
+COPY test-requirements.txt mycroft-core/RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
+
 # Add the mycroft core virtual environment to the system path.
 ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
+
 # Install Mark I default skills
 RUN msm -p $platform default
 COPY . mycroft-core
@@ -83,15 +92,12 @@ EXPOSE 8181
 #
 FROM core_builder as voight_kampff_builder
 ARG platform
-# Install required packages for test environments
 RUN mkdir ~/.mycroft/allure-result
 
 # The behave feature files for a skill are defined within the skill's
 # repository.  Copy those files into the local feature file directory
 # for test discovery.
 WORKDIR /opt/mycroft/mycroft-core
-# Generate hash of required packages
-RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
 RUN python -m test.integrationtests.voight_kampff.test_setup --config test/integrationtests/voight_kampff/default.yml  --platform $platform
 
 # Setup and run the integration tests
