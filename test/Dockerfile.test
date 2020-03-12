@@ -57,32 +57,27 @@ ENV CI true
 #   This may not be the most efficient way to do this in terms of number of
 #   steps, but it is built to take advantage of Docker's caching mechanism
 #   to only rebuild things that have changed since the last build.
-RUN mkdir /opt/mycroft
-RUN mkdir /var/log/mycroft
-WORKDIR /opt/mycroft
-RUN mkdir mycroft-core skills ~/.mycroft
-RUN python3 -m venv "/opt/mycroft/mycroft-core/.venv"
+RUN mkdir -p /opt/mycroft/mycroft-core /opt/mycroft/skills ~/.mycroft /var/log/mycroft ~/.venv
+RUN python3 -m venv "~/.venv/mycroft-core"
 
-# Install required Python packages
-RUN mycroft-core/.venv/bin/python -m pip install pip==20.0.2
-COPY requirements.txt mycroft-core/
-RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/requirements.txt
-COPY test-requirements.txt mycroft-core/
-RUN mycroft-core/.venv/bin/python -m pip install -r mycroft-core/test-requirements.txt
-
-# Generate hash of required packages
+# Install required Python packages.  Generate hash, which mycroft core uses to
+# determine if any changes have been made since it last started
+WORKDIR ~/.venv
+RUN bin/python -m pip install pip==20.0.2
+COPY requirements.txt mycroft_core/
+RUN bin/python -m pip install -r mycroft-core/requirements.txt
+COPY test-requirements.txt mycroft_core/
+RUN bin/python -m pip install -r mycroft-core/test-requirements.txt
 COPY dev_setup.sh mycroft-core/
-WORKDIR /opt/mycroft/mycroft-core
-COPY test-requirements.txt mycroft-core/
 RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
 
 # Add the mycroft core virtual environment to the system path.
-ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
+ENV PATH ~/.venv/bin:$PATH
 
 # Install Mark I default skills
 RUN msm -p $platform default
 COPY . mycroft-core
-RUN mycroft-core/.venv/bin/python -m pip install --no-deps /opt/mycroft/mycroft-core
+RUN bin/python -m pip install --no-deps /opt/mycroft/mycroft-core
 EXPOSE 8181
 
 
