@@ -57,12 +57,12 @@ ENV CI true
 #   This may not be the most efficient way to do this in terms of number of
 #   steps, but it is built to take advantage of Docker's caching mechanism
 #   to only rebuild things that have changed since the last build.
-RUN mkdir -p /opt/mycroft/mycroft-core /opt/mycroft/skills /root/.mycroft /var/log/mycroft /root/.venv
-RUN python3 -m venv "/root/.venv/mycroft-core"
+RUN mkdir -p /opt/mycroft/mycroft-core /opt/mycroft/skills /root/.mycroft /var/log/mycroft
+RUN python3 -m venv "/opt/mycroft/mycroft-core/.venv"
 
 # Install required Python packages.  Generate hash, which mycroft core uses to
 # determine if any changes have been made since it last started
-WORKDIR /root/.venv/mycroft-core
+WORKDIR /opt/mycroft/mycroft-core/.venv
 RUN bin/python -m pip install pip==20.0.2
 COPY requirements.txt .
 RUN bin/python -m pip install -r requirements.txt
@@ -72,7 +72,7 @@ COPY dev_setup.sh .
 RUN md5sum requirements.txt test-requirements.txt dev_setup.sh > .installed
 
 # Add the mycroft core virtual environment to the system path.
-ENV PATH /root/.venv/mycroft-core/bin:$PATH
+ENV PATH /opt/mycroft/mycroft-core/.venv/bin:$PATH
 
 # Install Mark I default skills
 RUN msm -p $platform default
@@ -88,13 +88,13 @@ EXPOSE 8181
 #
 FROM core_builder as voight_kampff_builder
 ARG platform
-RUN mkdir ~/.mycroft/allure-result
+RUN mkdir /root/.mycroft/allure-result
 
 # The behave feature files for a skill are defined within the skill's
 # repository.  Copy those files into the local feature file directory
 # for test discovery.
-WORKDIR /opt/mycroft/mycroft-core
-RUN python -m test.integrationtests.voight_kampff.test_setup --config test/integrationtests/voight_kampff/default.yml  --platform $platform
+WORKDIR /opt/mycroft/mycroft-core/.venv
+RUN bin/python -m test.integrationtests.voight_kampff.test_setup --config test/integrationtests/voight_kampff/default.yml  --platform $platform
 
 # Setup and run the integration tests
 ENV PYTHONPATH /opt/mycroft/mycroft-core/
