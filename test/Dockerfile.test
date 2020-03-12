@@ -80,6 +80,7 @@ EXPOSE 8181
 #   will run the "voight_kampff" integration test suite.
 #
 FROM core_builder as voight_kampff_builder
+ARG platform
 # Install required packages for test environments
 RUN mkdir ~/.mycroft/allure-result
 
