@@ -28,8 +28,8 @@ from .locations import (DEFAULT_CONFIG, SYSTEM_CONFIG, USER_CONFIG,
 
 
 def is_remote_list(values):
-    ''' check if this list corresponds to a backend formatted collection of
-    dictionaries '''
+    """Check if list corresponds to a backend formatted collection of dicts
+    """
     for v in values:
         if not isinstance(v, dict):
             return False
@@ -39,13 +39,11 @@ def is_remote_list(values):
 
 
 def translate_remote(config, setting):
-    """
-        Translate config names from server to equivalents usable
-        in mycroft-core.
+    """Translate config names from server to equivalents for mycroft-core.
 
-        Args:
-                config:     base config to populate
-                settings:   remote settings to be translated
+    Args:
+        config:     base config to populate
+        settings:   remote settings to be translated
     """
     IGNORED_SETTINGS = ["uuid", "@type", "active", "user", "device"]
 
@@ -69,12 +67,11 @@ def translate_remote(config, setting):
 
 
 def translate_list(config, values):
-    """
-        Translate list formated by mycroft server.
+    """Translate list formated by mycroft server.
 
-        Args:
-            config (dict): target config
-            values (list): list from mycroft server config
+    Args:
+        config (dict): target config
+        values (list): list from mycroft server config
     """
     for v in values:
         module = v["@type"]
@@ -85,9 +82,7 @@ def translate_list(config, values):
 
 
 class LocalConf(dict):
-    """
-        Config dict from file.
-    """
+    """Config dictionary from file."""
     def __init__(self, path):
         super(LocalConf, self).__init__()
         if path:
@@ -95,11 +90,10 @@ class LocalConf(dict):
             self.load_local(path)
 
     def load_local(self, path):
-        """
-            Load local json file into self.
+        """Load local json file into self.
 
-            Args:
-                path (str): file to load
+        Args:
+            path (str): file to load
         """
         if exists(path) and isfile(path):
             try:
@@ -115,10 +109,10 @@ class LocalConf(dict):
             LOG.debug("Configuration '{}' not defined, skipping".format(path))
 
     def store(self, path=None):
-        """
-            Cache the received settings locally. The cache will be used if
-            the remote is unreachable to load settings that are as close
-            to the user's as possible
+        """Cache the received settings locally.
+
+        The cache will be used if the remote is unreachable to load settings
+        that are as close to the user's as possible.
         """
         path = path or self.path
         with open(path, 'w') as f:
@@ -129,9 +123,7 @@ class LocalConf(dict):
 
 
 class RemoteConf(LocalConf):
-    """
-        Config dict fetched from mycroft.ai
-    """
+    """Config dictionary fetched from mycroft.ai."""
     def __init__(self, cache=None):
         super(RemoteConf, self).__init__(None)
 
@@ -147,6 +139,7 @@ class RemoteConf(LocalConf):
             api = DeviceApi()
             setting = api.get_settings()
 
+            location = None
             try:
                 location = api.get_location()
             except RequestException as e:
@@ -176,18 +169,23 @@ class RemoteConf(LocalConf):
 
 
 class Configuration:
+    """Namespace for operations on the configuration singleton."""
     __config = {}  # Cached config
     __patch = {}  # Patch config that skills can update to override config
 
     @staticmethod
     def get(configs=None, cache=True):
-        """
-            Get configuration, returns cached instance if available otherwise
-            builds a new configuration dict.
+        """Get configuration
 
-            Args:
-                configs (list): List of configuration dicts
-                cache (boolean): True if the result should be cached
+        Returns cached instance if available otherwise builds a new
+        configuration dict.
+
+        Args:
+            configs (list): List of configuration dicts
+            cache (boolean): True if the result should be cached
+
+        Returns:
+            (dict) configuration dictionary.
         """
         if Configuration.__config:
             return Configuration.__config
@@ -196,14 +194,14 @@ class Configuration:
 
     @staticmethod
     def load_config_stack(configs=None, cache=False):
-        """
-            load a stack of config dicts into a single dict
+        """Load a stack of config dicts into a single dict
 
-            Args:
-                configs (list): list of dicts to load
-                cache (boolean): True if result should be cached
+        Args:
+            configs (list): list of dicts to load
+            cache (boolean): True if result should be cached
 
-            Returns: merged dict of all configuration files
+        Returns:
+            (dict) merged dict of all configuration files
         """
         if not configs:
             configs = [LocalConf(DEFAULT_CONFIG), RemoteConf(),
@@ -238,24 +236,35 @@ class Configuration:
         """
         bus.on("configuration.updated", Configuration.updated)
         bus.on("configuration.patch", Configuration.patch)
+        bus.on("configuration.patch.clear", Configuration.patch_clear)
 
     @staticmethod
     def updated(message):
-        """
-            handler for configuration.updated, triggers an update
-            of cached config.
+        """Handler for configuration.updated,
+
+        Triggers an update of cached config.
         """
         Configuration.load_config_stack(cache=True)
 
     @staticmethod
     def patch(message):
-        """
-            patch the volatile dict usable by skills
+        """Patch the volatile dict usable by skills
 
-            Args:
-                message: Messagebus message should contain a config
-                         in the data payload.
+        Args:
+            message: Messagebus message should contain a config
+                     in the data payload.
         """
         config = message.data.get("config", {})
         merge_dict(Configuration.__patch, config)
+        Configuration.load_config_stack(cache=True)
+
+    @staticmethod
+    def patch_clear(message):
+        """Clear the config patch space.
+
+        Args:
+            message: Messagebus message should contain a config
+                     in the data payload.
+        """
+        Configuration.__patch = {}
         Configuration.load_config_stack(cache=True)

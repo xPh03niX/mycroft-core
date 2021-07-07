@@ -23,10 +23,11 @@ from threading import Thread
 from mycroft.api import STTApi, HTTPError
 from mycroft.configuration import Configuration
 from mycroft.util.log import LOG
+from mycroft.util.plugins import load_plugin
 
 
 class STT(metaclass=ABCMeta):
-    """ STT Base class, all  STT backends derives from this one. """
+    """STT Base class, all STT backends derive from this one. """
     def __init__(self):
         config_core = Configuration.get()
         self.lang = str(self.init_language(config_core))
@@ -38,6 +39,7 @@ class STT(metaclass=ABCMeta):
 
     @staticmethod
     def init_language(config_core):
+        """Helper method to get language code from Mycroft config."""
         lang = config_core.get("lang", "en-US")
         langs = lang.split("-")
         if len(langs) == 2:
@@ -46,7 +48,21 @@ class STT(metaclass=ABCMeta):
 
     @abstractmethod
     def execute(self, audio, language=None):
-        pass
+        """Implementation of STT functionallity.
+
+        This method needs to be implemented by the derived class to implement
+        the specific STT engine connection.
+
+        The method gets passed audio and optionally a language code and is
+        expected to return a text string.
+
+        Args:
+            audio (AudioData): audio recorded by mycroft.
+            language (str): optional language code
+
+        Returns:
+            str: parsed text
+        """
 
 
 class TokenSTT(STT, metaclass=ABCMeta):
@@ -108,14 +124,84 @@ class WITSTT(TokenSTT):
         return self.recognizer.recognize_wit(audio, self.token)
 
 
-class IBMSTT(BasicSTT):
+class IBMSTT(TokenSTT):
+    """
+        IBM Speech to Text
+        Enables IBM Speech to Text access using API key. To use IBM as a
+        service provider, it must be configured locally in your config file. An
+        IBM Cloud account with Speech to Text enabled is required (limited free
+        tier may be available). STT config should match the following format:
+
+        "stt": {
+            "module": "ibm",
+            "ibm": {
+                "credential": {
+                    "token": "YOUR_API_KEY"
+                },
+                "url": "URL_FROM_SERVICE"
+            }
+        }
+    """
     def __init__(self):
         super(IBMSTT, self).__init__()
 
     def execute(self, audio, language=None):
+        if not self.token:
+            raise ValueError('API key (token) for IBM Cloud is not defined.')
+
+        url_base = self.config.get('url', '')
+        if not url_base:
+            raise ValueError('URL for IBM Cloud is not defined.')
+        url = url_base + '/v1/recognize'
+
         self.lang = language or self.lang
-        return self.recognizer.recognize_ibm(audio, self.username,
-                                             self.password, self.lang)
+        supported_languages = [
+            'ar-AR', 'pt-BR', 'zh-CN', 'nl-NL', 'en-GB', 'en-US', 'fr-FR',
+            'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'es-AR', 'es-ES', 'es-CL',
+            'es-CO', 'es-MX', 'es-PE'
+        ]
+        if self.lang not in supported_languages:
+            raise ValueError(
+                'Unsupported language "{}" for IBM STT.'.format(self.lang))
+
+        audio_model = 'BroadbandModel'
+        if audio.sample_rate < 16000 and not self.lang == 'ar-AR':
+            audio_model = 'NarrowbandModel'
+
+        params = {
+            'model': '{}_{}'.format(self.lang, audio_model),
+            'profanity_filter': 'false'
+        }
+        headers = {
+            'Content-Type': 'audio/x-flac',
+            'X-Watson-Learning-Opt-Out': 'true'
+        }
+
+        response = post(url, auth=('apikey', self.token), headers=headers,
+                        data=audio.get_flac_data(), params=params)
+
+        if response.status_code == 200:
+            result = json.loads(response.text)
+            if result.get('error_code') is None:
+                if ('results' not in result or len(result['results']) < 1 or
+                        'alternatives' not in result['results'][0]):
+                    raise Exception(
+                        'Transcription failed. Invalid or empty results.')
+                transcription = []
+                for utterance in result['results']:
+                    if 'alternatives' not in utterance:
+                        raise Exception(
+                            'Transcription failed. Invalid or empty results.')
+                    for hypothesis in utterance['alternatives']:
+                        if 'transcript' in hypothesis:
+                            transcription.append(hypothesis['transcript'])
+                return '\n'.join(transcription)
+        elif response.status_code == 401:  # Unauthorized
+            raise Exception('Invalid API key for IBM Cloud.')
+        else:
+            raise Exception(
+                'Request to IBM Cloud failed. Code: {} Body: {}'.format(
+                    response.status_code, response.text))
 
 
 class YandexSTT(STT):
@@ -246,15 +332,19 @@ class DeepSpeechServerSTT(STT):
 
     def execute(self, audio, language=None):
         language = language or self.lang
-        if not language.startswith("en"):
-            raise ValueError("Deepspeech is currently english only")
         response = post(self.config.get("uri"), data=audio.get_wav_data())
         return response.text
 
 
 class StreamThread(Thread, metaclass=ABCMeta):
-    """
-        ABC class to be used with StreamingSTT class implementations.
+    """ABC class to be used with StreamingSTT class implementations.
+
+    This class reads audio chunks from a queue and sends it to a parsing
+    STT engine.
+
+    Args:
+        queue (Queue): Input Queue
+        language (str): language code for the current language.
     """
 
     def __init__(self, queue, language):
@@ -264,6 +354,7 @@ class StreamThread(Thread, metaclass=ABCMeta):
         self.text = None
 
     def _get_data(self):
+        """Generator reading audio data from queue."""
         while True:
             d = self.queue.get()
             if d is None:
@@ -272,23 +363,38 @@ class StreamThread(Thread, metaclass=ABCMeta):
             self.queue.task_done()
 
     def run(self):
+        """Thread entry point."""
         return self.handle_audio_stream(self._get_data(), self.language)
 
     @abstractmethod
     def handle_audio_stream(self, audio, language):
-        pass
+        """Handling of audio stream.
+
+        Needs to be implemented by derived class to process audio data and
+        optionally update `self.text` with the current hypothesis.
+
+        Argumens:
+            audio (bytes): raw audio data.
+            language (str): language code for the current session.
+        """
 
 
 class StreamingSTT(STT, metaclass=ABCMeta):
-    """
-        ABC class for threaded streaming STT implemenations.
-    """
+    """ABC class for threaded streaming STT implemenations."""
     def __init__(self):
         super().__init__()
         self.stream = None
         self.can_stream = True
 
     def stream_start(self, language=None):
+        """Indicate start of new audio stream.
+
+        This creates a new thread for handling the incomming audio stream as
+        it's collected by Mycroft.
+
+        Args:
+            language (str): optional language code for the new stream.
+        """
         self.stream_stop()
         language = language or self.lang
         self.queue = Queue()
@@ -296,9 +402,21 @@ class StreamingSTT(STT, metaclass=ABCMeta):
         self.stream.start()
 
     def stream_data(self, data):
+        """Receiver of audio data.
+
+        Args:
+            data (bytes): raw audio data.
+        """
         self.queue.put(data)
 
     def stream_stop(self):
+        """Indicate that the audio stream has ended.
+
+        This will tear down the processing thread and collect the result
+
+        Returns:
+            str: parsed text
+        """
         if self.stream is not None:
             self.queue.put(None)
             self.stream.join()
@@ -311,11 +429,20 @@ class StreamingSTT(STT, metaclass=ABCMeta):
         return None
 
     def execute(self, audio, language=None):
+        """End the parsing thread and collect data."""
         return self.stream_stop()
 
     @abstractmethod
     def create_streaming_thread(self):
-        pass
+        """Create thread for parsing audio chunks.
+
+        This method should be implemented by the derived class to return an
+        instance derived from StreamThread to handle the audio stream and
+        send it to the STT engine.
+
+        Returns:
+            StreamThread: Thread to handle audio data.
+        """
 
 
 class DeepSpeechStreamThread(StreamThread):
@@ -477,6 +604,17 @@ class GoVivaceSTT(TokenSTT):
         return response.json()["result"]["hypotheses"][0]["transcript"]
 
 
+def load_stt_plugin(module_name):
+    """Wrapper function for loading stt plugin.
+
+    Args:
+        module_name (str): Mycroft stt module name from config
+    Returns:
+        class: STT plugin class
+    """
+    return load_plugin('mycroft.plugin.stt', module_name)
+
+
 class STTFactory:
     CLASSES = {
         "mycroft": MycroftSTT,
@@ -500,9 +638,13 @@ class STTFactory:
         try:
             config = Configuration.get().get("stt", {})
             module = config.get("module", "mycroft")
-            clazz = STTFactory.CLASSES.get(module)
+            if module in STTFactory.CLASSES:
+                clazz = STTFactory.CLASSES[module]
+            else:
+                clazz = load_stt_plugin(module)
+                LOG.info('Loaded the STT plugin {}'.format(module))
             return clazz()
-        except Exception as e:
+        except Exception:
             # The STT backend failed to start. Report it and fall back to
             # default.
             LOG.exception('The selected STT backend could not be loaded, '

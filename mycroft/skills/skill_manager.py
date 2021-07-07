@@ -16,7 +16,8 @@
 import os
 from glob import glob
 from threading import Thread, Event, Lock
-from time import sleep, time
+from time import sleep, time, monotonic
+from inspect import signature
 
 from mycroft.api import is_paired
 from mycroft.enclosure.api import EnclosureAPI
@@ -41,6 +42,7 @@ class UploadQueue:
     After all queued settingsmeta has been processed and the queue is empty
     the queue will set the self.started flag.
     """
+
     def __init__(self):
         self._queue = []
         self.started = False
@@ -48,8 +50,12 @@ class UploadQueue:
 
     def start(self):
         """Start processing of the queue."""
-        self.send()
         self.started = True
+        self.send()
+
+    def stop(self):
+        """Stop the queue, and hinder any further transmissions."""
+        self.started = False
 
     def send(self):
         """Loop through all stored loaders triggering settingsmeta upload."""
@@ -59,7 +65,10 @@ class UploadQueue:
         if queue:
             LOG.info('New Settings meta to upload.')
             for loader in queue:
-                loader.instance.settings_meta.upload()
+                if self.started:
+                    loader.instance.settings_meta.upload()
+                else:
+                    break
 
     def __len__(self):
         return len(self._queue)
@@ -73,21 +82,47 @@ class UploadQueue:
             LOG.info('Updating settings meta during runtime...')
         with self.lock:
             # Remove existing loader
-            self._queue == [e for e in self._queue if e != loader]
+            self._queue = [e for e in self._queue if e != loader]
             self._queue.append(loader)
+
+
+def _shutdown_skill(instance):
+    """Shutdown a skill.
+
+    Call the default_shutdown method of the skill, will produce a warning if
+    the shutdown process takes longer than 1 second.
+
+    Args:
+        instance (MycroftSkill): Skill instance to shutdown
+    """
+    try:
+        ref_time = monotonic()
+        # Perform the shutdown
+        instance.default_shutdown()
+
+        shutdown_time = monotonic() - ref_time
+        if shutdown_time > 1:
+            LOG.warning('{} shutdown took {} seconds'.format(instance.skill_id,
+                                                             shutdown_time))
+    except Exception:
+        LOG.exception('Failed to shut down skill: '
+                      '{}'.format(instance.skill_id))
 
 
 class SkillManager(Thread):
     _msm = None
 
-    def __init__(self, bus):
+    def __init__(self, bus, watchdog=None):
         """Constructor
 
-        Arguments:
+        Args:
             bus (event emitter): Mycroft messagebus connection
+            watchdog (callable): optional watchdog function
         """
         super(SkillManager, self).__init__()
         self.bus = bus
+        # Set watchdog to argument or function returning None
+        self._watchdog = watchdog or (lambda: None)
         self._stop_event = Event()
         self._connected_event = Event()
         self.config = Configuration.get()
@@ -98,13 +133,16 @@ class SkillManager(Thread):
         self.initial_load_complete = False
         self.num_install_retries = 0
         self.settings_downloader = SkillSettingsDownloader(self.bus)
-        self._define_message_bus_events()
-        self.skill_updater = SkillUpdater()
-        self.daemon = True
+
+        self.empty_skill_dirs = set()  # Save a record of empty skill dirs.
 
         # Statuses
         self._alive_status = False  # True after priority skills has loaded
         self._loaded_status = False  # True after all skills has loaded
+
+        self.skill_updater = SkillUpdater()
+        self._define_message_bus_events()
+        self.daemon = True
 
     def _define_message_bus_events(self):
         """Define message bus events with handlers defined in this class."""
@@ -124,8 +162,6 @@ class SkillManager(Thread):
         self.bus.on('skillmanager.keep', self.deactivate_except)
         self.bus.on('skillmanager.activate', self.activate_skill)
         self.bus.on('mycroft.paired', self.handle_paired)
-        self.bus.on('mycroft.skills.is_alive', self.is_alive)
-        self.bus.on('mycroft.skills.all_loaded', self.is_all_loaded)
         self.bus.on(
             'mycroft.skills.settings.update',
             self.settings_downloader.download
@@ -193,6 +229,11 @@ class SkillManager(Thread):
         """Load skills and update periodically from disk and internet."""
         self._remove_git_locks()
         self._connected_event.wait()
+        if (not self.skill_updater.defaults_installed() and
+                self.skills_config["auto_update"]):
+            LOG.info('Not all default skills are installed, '
+                     'performing skill update...')
+            self.skill_updater.update_skills()
         self._load_on_startup()
 
         # Sync backend and skills.
@@ -203,9 +244,9 @@ class SkillManager(Thread):
         # unload the existing version from memory and reload from the disk.
         while not self._stop_event.is_set():
             try:
+                self._unload_removed_skills()
                 self._reload_modified_skills()
                 self._load_new_skills()
-                self._unload_removed_skills()
                 self._update_skills()
                 if (is_paired() and self.upload_queue.started and
                         len(self.upload_queue) > 0):
@@ -213,6 +254,7 @@ class SkillManager(Thread):
                     self.skill_updater.post_manifest()
                     self.upload_queue.send()
 
+                self._watchdog()
                 sleep(2)  # Pause briefly before beginning next scan
             except Exception:
                 LOG.exception('Something really unexpected has occured '
@@ -261,6 +303,7 @@ class SkillManager(Thread):
             load_status = skill_loader.load()
         except Exception:
             LOG.exception('Load of skill {} failed!'.format(skill_directory))
+            load_status = False
         finally:
             self.skill_loaders[skill_directory] = skill_loader
 
@@ -275,8 +318,13 @@ class SkillManager(Thread):
             # check if folder is a skill (must have __init__.py)
             if SKILL_MAIN_MODULE in os.listdir(skill_dir):
                 skill_directories.append(skill_dir.rstrip('/'))
+                if skill_dir in self.empty_skill_dirs:
+                    self.empty_skill_dirs.discard(skill_dir)
             else:
-                LOG.debug('Found skills directory with no skill: ' + skill_dir)
+                if skill_dir not in self.empty_skill_dirs:
+                    self.empty_skill_dirs.add(skill_dir)
+                    LOG.debug('Found skills directory with no skill: ' +
+                              skill_dir)
 
         return skill_directories
 
@@ -312,17 +360,10 @@ class SkillManager(Thread):
 
     def is_alive(self, message=None):
         """Respond to is_alive status request."""
-        if message:
-            status = {'status': self._alive_status}
-            self.bus.emit(message.response(data=status))
         return self._alive_status
 
     def is_all_loaded(self, message=None):
         """ Respond to all_loaded status request."""
-        if message:
-            status = {'status': self._loaded_status}
-            self.bus.emit(message.response(data=status))
-
         return self._loaded_status
 
     def send_skill_list(self, _):
@@ -378,16 +419,12 @@ class SkillManager(Thread):
         """Tell the manager to shutdown."""
         self._stop_event.set()
         self.settings_downloader.stop_downloading()
+        self.upload_queue.stop()
 
         # Do a clean shutdown of all skills
         for skill_loader in self.skill_loaders.values():
             if skill_loader.instance is not None:
-                try:
-                    skill_loader.instance.default_shutdown()
-                except Exception:
-                    LOG.exception(
-                        'Failed to shut down skill: ' + skill_loader.skill_id
-                    )
+                _shutdown_skill(skill_loader.instance)
 
     def handle_converse_request(self, message):
         """Check if the targeted skill id can handle conversation
@@ -406,9 +443,17 @@ class SkillManager(Thread):
                     self._emit_converse_error(message, skill_id, error_message)
                     break
                 try:
-                    utterances = message.data['utterances']
-                    lang = message.data['lang']
-                    result = skill_loader.instance.converse(utterances, lang)
+                    # check the signature of a converse method
+                    # to either pass a message or not
+                    if len(signature(
+                            skill_loader.instance.converse).parameters) == 1:
+                        result = skill_loader.instance.converse(
+                            message=message)
+                    else:
+                        utterances = message.data['utterances']
+                        lang = message.data['lang']
+                        result = skill_loader.instance.converse(
+                            utterances=utterances, lang=lang)
                     self._emit_converse_response(result, message, skill_loader)
                 except Exception:
                     error_message = 'exception in converse method'
@@ -424,11 +469,6 @@ class SkillManager(Thread):
     def _emit_converse_error(self, message, skill_id, error_msg):
         """Emit a message reporting the error back to the intent service."""
         reply = message.reply('skill.converse.response',
-                              data=dict(skill_id=skill_id, error=error_msg))
-        self.bus.emit(reply)
-        # Also emit the old error message to keep compatibility
-        # TODO Remove in 20.08
-        reply = message.reply('skill.converse.error',
                               data=dict(skill_id=skill_id, error=error_msg))
         self.bus.emit(reply)
 

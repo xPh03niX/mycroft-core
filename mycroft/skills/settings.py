@@ -57,15 +57,20 @@ SkillSettings Usage Example:
 """
 import json
 import os
+from os.path import dirname
 import re
 from pathlib import Path
 from threading import Timer
+from xdg.BaseDirectory import xdg_cache_home
+
+import yaml
 
 from mycroft.api import DeviceApi, is_paired
 from mycroft.configuration import Configuration
 from mycroft.messagebus.message import Message
 from mycroft.util import camel_case_split
 from mycroft.util.log import LOG
+from mycroft.util.file_utils import ensure_directory_exists
 from .msm_wrapper import build_msm_config, create_msm
 
 ONE_MINUTE = 60
@@ -93,46 +98,28 @@ def get_local_settings(skill_dir, skill_name) -> dict:
 def save_settings(skill_dir, skill_settings):
     """Save skill settings to file."""
     settings_path = Path(skill_dir).joinpath('settings.json')
-    if Path(skill_dir).exists():
-        with open(str(settings_path), 'w') as settings_file:
-            try:
-                json.dump(skill_settings, settings_file)
-            except Exception:
-                LOG.exception('error saving skill settings to '
-                              '{}'.format(settings_path))
-            else:
-                LOG.info('Skill settings successfully saved to '
-                         '{}' .format(settings_path))
-    else:
-        LOG.info('Skill folder no longer exists, can\'t save settings.')
+
+    # Either the file already exists in /opt, or we are writing
+    # to XDG_CONFIG_DIR and always have the permission to make
+    # sure the file always exists
+    if not Path(settings_path).exists():
+        settings_path.touch(mode=0o644)
+
+    with open(str(settings_path), 'w') as settings_file:
+        try:
+            json.dump(skill_settings, settings_file)
+        except Exception:
+            LOG.exception('error saving skill settings to '
+                          '{}'.format(settings_path))
+        else:
+            LOG.info('Skill settings successfully saved to '
+                     '{}' .format(settings_path))
 
 
 def get_display_name(skill_name: str):
     """Splits camelcase and removes leading/trailing "skill"."""
     skill_name = re.sub(r'(^[Ss]kill|[Ss]kill$)', '', skill_name)
     return camel_case_split(skill_name)
-
-
-def _extract_settings_from_meta(settings_meta: dict) -> dict:
-    """Extract the skill setting name/value pairs from settingsmeta.json
-
-    Args:
-        settings_meta: contents of the settingsmeta.json
-
-    Returns:
-        Dictionary of settings keyed by name
-    """
-    fields = {}
-    try:
-        sections = settings_meta['skillMetadata']['sections']
-    except KeyError:
-        pass
-    else:
-        for section in sections:
-            for field in section.get('fields', []):
-                fields[field['name']] = field['value']
-
-    return fields
 
 
 class SettingsMetaUploader:
@@ -155,6 +142,12 @@ class SettingsMetaUploader:
         self.settings_meta = {}
         self.api = None
         self.upload_timer = None
+        self.sync_enabled = self.config["server"].get("sync_skill_settings",
+                                                      False)
+        if not self.sync_enabled:
+            LOG.info("Skill settings sync is disabled, settingsmeta will "
+                     "not be uploaded")
+
         self._stopped = None
 
         # Property placeholders
@@ -171,10 +164,9 @@ class SettingsMetaUploader:
         return self._msm
 
     def get_local_skills(self):
-        return {
-            skill.path: skill for skill in
-            self.msm.local_skills.values()
-        }
+        """Generate a mapping of skill path to skill name for all local skills.
+        """
+        return {skill.path: skill for skill in self.msm.local_skills.values()}
 
     @property
     def skill_gid(self):
@@ -235,6 +227,8 @@ class SettingsMetaUploader:
         The settingsmeta file does not change often, if at all.  Only perform
         the upload if a change in the file is detected.
         """
+        if not self.sync_enabled:
+            return
         synced = False
         if is_paired():
             self.api = DeviceApi()
@@ -260,7 +254,7 @@ class SettingsMetaUploader:
             self.upload_timer.start()
 
     def stop(self):
-        """ Stop upload attempts if Timer is running."""
+        """Stop upload attempts if Timer is running."""
         if self.upload_timer:
             self.upload_timer.cancel()
         # Set stopped flag if upload is running when stop is called.
@@ -268,8 +262,6 @@ class SettingsMetaUploader:
 
     def _load_settings_meta_file(self):
         """Read the contents of the settingsmeta file into memory."""
-        # Imported here do handle issue with readthedocs build
-        import yaml
         _, ext = os.path.splitext(str(self.settings_meta_path))
         is_json_file = self.settings_meta_path.suffix == ".json"
         try:
@@ -320,23 +312,61 @@ class SettingsMetaUploader:
         return success
 
 
-class SkillSettingsDownloader:
-    """Manages the contents of the settings.json file.
+# Path to remote cache
+REMOTE_CACHE = Path(xdg_cache_home, 'mycroft', 'remote_skill_settings.json')
 
-    The settings.json file contains a set of name/value pairs representing
-    the values of the settings defined in settingsmeta.json
+
+def load_remote_settings_cache():
+    """Load cached remote skill settings.
+
+    Returns:
+        (dict) Loaded remote settings cache or None of none exists.
+    """
+    remote_settings = {}
+    if REMOTE_CACHE.exists():
+        try:
+            with open(str(REMOTE_CACHE)) as cache:
+                remote_settings = json.load(cache)
+        except Exception as error:
+            LOG.warning('Failed to read remote_cache ({})'.format(error))
+    return remote_settings
+
+
+def save_remote_settings_cache(remote_settings):
+    """Save updated remote settings to cache file.
+
+    Args:
+        remote_settings (dict): downloaded remote settings.
+    """
+    try:
+        ensure_directory_exists(dirname(str(REMOTE_CACHE)))
+        with open(str(REMOTE_CACHE), 'w') as cache:
+            json.dump(remote_settings, cache)
+    except Exception as error:
+        LOG.warning('Failed to write remote_cache. ({})'.format(error))
+    else:
+        LOG.debug('Updated local cache of remote skill settings.')
+
+
+class SkillSettingsDownloader:
+    """Manages download of skill settings.
+
+    Performs settings download on a repeating Timer. If a change is seen
+    the data is sent to the relevant skill.
     """
 
     def __init__(self, bus):
         self.bus = bus
         self.continue_downloading = True
-        self.changed_callback = None
-        self.settings_meta_fields = None
-        self.last_download_result = {}
-        self.remote_settings = None
-        self.settings_changed = False
+        self.last_download_result = load_remote_settings_cache()
+
         self.api = DeviceApi()
         self.download_timer = None
+        self.sync_enabled = Configuration.get()["server"]\
+            .get("sync_skill_settings", False)
+        if not self.sync_enabled:
+            LOG.info("Skill settings sync is disabled, backend settings will "
+                     "not be downloaded")
 
     def stop_downloading(self):
         """Stop synchronizing backend and core."""
@@ -345,23 +375,26 @@ class SkillSettingsDownloader:
             self.download_timer.cancel()
 
     # TODO: implement as websocket
-    def download(self):
-        """Download the settings stored on the backend and check for changes"""
+    def download(self, message=None):
+        """Download the settings stored on the backend and check for changes
+
+        When used as a messagebus handler a message is passed but not used.
+        """
+        if not self.sync_enabled:
+            return
         if is_paired():
-            download_success = self._get_remote_settings()
-            if download_success:
-                self.settings_changed = (
-                    self.last_download_result != self.remote_settings
-                )
-                if self.settings_changed:
+            remote_settings = self._get_remote_settings()
+            if remote_settings:
+                settings_changed = self.last_download_result != remote_settings
+                if settings_changed:
                     LOG.debug('Skill settings changed since last download')
-                    self._emit_settings_change_events()
-                    self.last_download_result = self.remote_settings
+                    self._emit_settings_change_events(remote_settings)
+                    self.last_download_result = remote_settings
+                    save_remote_settings_cache(remote_settings)
                 else:
                     LOG.debug('No skill settings changes since last download')
         else:
             LOG.debug('Settings not downloaded - device is not paired')
-
         # If this method is called outside of the timer loop, ensure the
         # existing timer is canceled before starting a new one.
         if self.download_timer:
@@ -376,37 +409,32 @@ class SkillSettingsDownloader:
         """Get the settings for this skill from the server
 
         Returns:
-            skill_settings (dict or None): returns a dict if matches
+            skill_settings (dict or None): returns a dict on success, else None
         """
         try:
             remote_settings = self.api.get_skill_settings()
         except Exception:
             LOG.exception('Failed to download remote settings from server.')
-            success = False
-        else:
-            self.remote_settings = remote_settings
-            success = True
+            remote_settings = None
 
-        return success
+        return remote_settings
 
-    def _emit_settings_change_events(self):
-        for skill_gid, remote_settings in self.remote_settings.items():
+    def _emit_settings_change_events(self, remote_settings):
+        """Emit changed settings events for each affected skill."""
+        for skill_gid, skill_settings in remote_settings.items():
             settings_changed = False
             try:
-                previous_settings = self.last_download_result[skill_gid]
-            except KeyError:
-                if remote_settings:
-                    settings_changed = True
+                previous_settings = self.last_download_result.get(skill_gid)
             except Exception:
                 LOG.exception('error occurred handling setting change events')
             else:
-                if previous_settings != remote_settings:
+                if previous_settings != skill_settings:
                     settings_changed = True
             if settings_changed:
                 log_msg = 'Emitting skill.settings.change event for skill {} '
                 LOG.info(log_msg.format(skill_gid))
                 message = Message(
                     'mycroft.skills.settings.changed',
-                    data={skill_gid: remote_settings}
+                    data={skill_gid: skill_settings}
                 )
                 self.bus.emit(message)

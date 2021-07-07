@@ -23,6 +23,7 @@ from ..mocks import mock_msm
 
 
 class TestUploadQueue(TestCase):
+
     def test_upload_queue_create(self):
         queue = UploadQueue()
         self.assertFalse(queue.started)
@@ -32,14 +33,30 @@ class TestUploadQueue(TestCase):
     def test_upload_queue_use(self):
         queue = UploadQueue()
         queue.start()
+        specific_loader = Mock(spec=SkillLoader, instance=Mock())
+        loaders = [Mock(), specific_loader, Mock(), Mock()]
         # Check that putting items on the queue makes it longer
+        for i, l in enumerate(loaders):
+            queue.put(l)
+            self.assertEqual(len(queue), i + 1)
+        # Check that adding an existing item replaces that item
+        queue.put(specific_loader)
+        self.assertEqual(len(queue), len(loaders))
+        # Check that sending items empties the queue
+        queue.send()
+        self.assertEqual(len(queue), 0)
+
+    def test_upload_queue_preloaded(self):
+        queue = UploadQueue()
         loaders = [Mock(), Mock(), Mock(), Mock()]
         for i, l in enumerate(loaders):
             queue.put(l)
             self.assertEqual(len(queue), i + 1)
-        # Check that sending items empties the queue
-        queue.send()
+        # Check that starting the queue will send all the items in the queue
+        queue.start()
         self.assertEqual(len(queue), 0)
+        for l in loaders:
+            l.instance.settings_meta.upload.assert_called_once_with()
 
 
 class TestSkillManager(MycroftUnitTestBase):
@@ -103,8 +120,6 @@ class TestSkillManager(MycroftUnitTestBase):
             'skillmanager.keep',
             'skillmanager.activate',
             'mycroft.paired',
-            'mycroft.skills.is_alive',
-            'mycroft.skills.all_loaded',
             'mycroft.skills.settings.update'
         ]
         self.assertListEqual(
